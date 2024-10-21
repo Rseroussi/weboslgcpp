@@ -5,7 +5,8 @@
 #include <nlohmann/json.hpp> // Use a JSON library like nlohmann/json
 #include <websocketpp/config/asio_no_tls_client.hpp>
 #include <websocketpp/client.hpp>
-#include <base64.h> // Use a base64 library like cppcodec
+#include <cppcodec/base32_crockford.hpp>
+#include <cppcodec/base64_rfc4648.hpp>
 
 using websocketpp::connection_hdl;
 using client = websocketpp::client<websocketpp::config::asio_client>;
@@ -13,6 +14,10 @@ using client = websocketpp::client<websocketpp::config::asio_client>;
 const std::string KEY_FILE_NAME = ".pylgtv";
 const std::string USER_HOME = "HOME";
 const std::string HANDSHAKE_FILE_NAME = "handshake.json";
+
+using json = nlohmann::json;
+using base64 = cppcodec::base64_rfc4648;
+using base32 = cppcodec::base32_crockford;
 
 // Exception class for pairing errors
 class PyLGTVPairException : public std::exception {
@@ -45,15 +50,15 @@ private:
     void loadKeyFile() {
         keyFilePath = getKeyFilePath();
         std::ifstream keyFile(keyFilePath);
-        if (!keyFile) {
+        if (keyFile.fail()) {
             std::cerr << "Failed to open key file: " << keyFilePath << std::endl;
             return;
         }
 
-        Json::Value keyData;
+        json keyData;
         keyFile >> keyData;
-        if (keyData.isMember(ip)) {
-            clientKey = keyData[ip].asString();
+        if (keyData.contains(ip)) {
+            clientKey = keyData[ip].get<std::string>();
         }
         keyFile.close();
     }
@@ -67,7 +72,7 @@ private:
             return;
         }
 
-        Json::Value keyData;
+        json keyData;
         keyData[ip] = clientKey;
         keyFile << keyData;
         keyFile.close();
@@ -84,19 +89,19 @@ public:
     }
 
     void sendRegisterPayload(websocketpp::connection_hdl hdl) {
-        // Load handshake JSON
+        // Load handshake json
         std::ifstream handshakeFile(HANDSHAKE_FILE_NAME);
         if (!handshakeFile) {
             std::cerr << "Failed to open handshake file: " << HANDSHAKE_FILE_NAME << std::endl;
             return;
         }
 
-        Json::Value handshake;
+        json handshake;
         handshakeFile >> handshake;
         handshake["payload"]["client-key"] = clientKey;
 
         // Send JSON over WebSocket
-        std::string jsonStr = handshake.toStyledString();
+        std::string jsonStr = handshake.dump();
         wsClient.send(hdl, jsonStr, websocketpp::frame::opcode::text);
     }
 
@@ -104,10 +109,10 @@ public:
         try {
             wsClient.init_asio();
             wsClient.set_message_handler([this](websocketpp::connection_hdl hdl, client::message_ptr msg) {
-                Json::Value response;
+                json response;
                 std::istringstream(msg->get_payload()) >> response;
-                if (response["type"].asString() == "registered") {
-                    clientKey = response["payload"]["client-key"].asString();
+                if (response["type"].get<std::string>() == "registered") {
+                    clientKey = response["payload"]["client-key"].get<std::string>();
                     saveKeyFile();
                 }
             });
@@ -128,15 +133,18 @@ public:
         }
     }
 
-    void sendCommand(const std::string& requestType, const std::string& uri, const Json::Value& payload) {
+    void sendCommand(const std::string& requestType, const std::string& uri, const json& payload) {
         commandCount++;
-        Json::Value message;
+        json message;
         message["id"] = requestType + "_" + std::to_string(commandCount);
         message["type"] = requestType;
         message["uri"] = "ssap://" + uri;
         message["payload"] = payload;
 
-        // Send the message (handling WebSocket setup is omitted for brevity)
+        // Send JSON over WebSocket
+        std::string jsonStr = message.dump();
+        wsClient.send(websocketpp::connection_hdl(), jsonStr, websocketpp::frame::opcode::text);
+
     }
 };
 

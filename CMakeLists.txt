@@ -10,6 +10,7 @@ find_package(Threads REQUIRED)
 
 # Include directories for external libraries
 include_directories(${PROJECT_SOURCE_DIR}/include)
+include_directories(${PROJECT_SOURCE_DIR}/lib)
 include_directories(${PROJECT_SOURCE_DIR}/src)
 # Add the main executable
 add_executable(webos_client src/webos_client.cpp)
@@ -32,7 +33,7 @@ target_link_libraries(webos_client PRIVATE websocketpp::websocketpp)
 
 # Add Base64 library (cppcodec)
 # If you have it as a header-only library:
-target_include_directories(webos_client PRIVATE ${PROJECT_SOURCE_DIR}/path/to/cppcodec)
+target_include_directories(webos_client PRIVATE ${PROJECT_SOURCE_DIR}/lib/cppcodec)
 
 # Link Boost Asio (if required for websocketpp)
 # This assumes Boost is installed and `BOOST_ROOT` is set.
