@@ -259,6 +259,181 @@ public:
 
         request(EP_SHOW_MESSAGE, payload);
     }
+
+    //Apps
+    json listApps() {
+        request(EP_GET_APPS, json());
+        return lastResponse["payload"]["launchPoints"];
+    }
+
+    json getCurrentApp() {
+        request(EP_GET_CURRENT_APP_INFO, json());
+        return lastResponse["payload"]["appId"];
+    }
+
+    void launchApp(const std::string& appId) {
+        json payload;
+        payload["id"] = appId;
+        request(EP_LAUNCH, payload);
+    }
+
+    void launchAppWithParams(const std::string& appId, const json& params) {
+        json payload;
+        payload["id"] = appId;
+        payload["params"] = params;
+        request(EP_LAUNCH, payload);
+    }
+
+    void launchAppWithContentID(const std::string& appId, const std::string& contentId) {
+        json payload;
+        payload["id"] = appId;
+        payload["contentId"] = contentId;
+        request(EP_LAUNCH, payload);
+    }
+
+    void closeApp(const std::string& appId) {
+        json payload;
+        payload["id"] = appId;
+        request(EP_LAUNCHER_CLOSE, payload);
+    }
+
+    //services
+    json listServices() {
+        request(EP_GET_SERVICES, json());
+        return lastResponse["payload"]["services"];
+    }
+
+    json getSoftwareInfo() {
+        request(EP_GET_SOFTWARE_INFO, json());
+        return lastResponse["payload"];
+    }
+
+    void powerOff() {
+        request(EP_POWER_OFF, json());
+    }
+    
+    void powerOn() {
+        request(EP_POWER_ON, json());
+    }
+
+    //3d mode
+    void turn3dOn() {
+        request(EP_3D_ON, json());
+    }
+    void turn3dOff() {
+        request(EP_3D_OFF, json());
+    }
+    
+    //Inputs
+    json listInputs() {
+        request(EP_GET_INPUTS, json());
+        return lastResponse["payload"]["devices"];
+    }
+
+    json getInput() {
+        return getCurrentApp();
+    }
+
+    void setInput(const std::string& inputId) {
+        json payload;
+        payload["inputId"] = inputId;
+        request(EP_SET_INPUT, payload);
+    }
+
+    //audio
+
+    json getVolume() {
+        request(EP_GET_VOLUME, json());
+        return lastResponse["payload"];
+    }
+
+    void setVolume(int volume) {
+        json payload;
+        payload["volume"] = volume;
+        request(EP_SET_VOLUME, payload);
+    }
+
+    void volumeUp() {
+        request(EP_VOLUME_UP, json());
+    }
+
+    void volumeDown() {
+        request(EP_VOLUME_DOWN, json());
+    }
+
+    //channels
+    json getChannels() {
+        request(EP_GET_TV_CHANNELS, json());
+        return lastResponse["payload"]["channelList"];
+    }
+
+    json getCurrentChannel() {
+        request(EP_GET_CURRENT_CHANNEL, json());
+        return lastResponse["payload"];
+    }
+
+    void setChannel(const std::string& channelId) {
+        json payload;
+        payload["channelId"] = channelId;
+        request(EP_SET_CHANNEL, payload);
+    }
+
+    json getChannelInfo(const std::string& channelId) {
+        json payload;
+        payload["channelId"] = channelId;
+        request(EP_GET_CHANNEL_INFO, payload);
+        return lastResponse["payload"];
+    }
+
+    void channelUp() {
+        request(EP_TV_CHANNEL_UP, json());
+    }
+
+    void channelDown() {
+        request(EP_TV_CHANNEL_DOWN, json());
+    }
+
+    //media
+    void play() {
+        request(EP_MEDIA_PLAY, json());
+    }
+    void pause() {
+        request(EP_MEDIA_PAUSE, json());
+    }
+    void stop() {
+        request(EP_MEDIA_STOP, json());
+    }
+    void rewind() {
+        request(EP_MEDIA_REWIND, json());
+    }
+    void fastForward() {
+        request(EP_MEDIA_FAST_FORWARD, json());
+    }
+    void close() {
+        request(EP_MEDIA_CLOSE, json());
+    }
+
+    //keys
+    void sendEnter() {
+        request(EP_SEND_ENTER, json());
+    }
+
+    void sendDelete() {
+        request(EP_SEND_DELETE, json());
+    }
+
+    //web
+    void openURL(const std::string& url) {
+        json payload;
+        payload["target"] = url;
+        request(EP_OPEN, payload);
+    }
+
+    void closeWebApp() {
+        request(EP_CLOSE_WEB_APP, json());
+    }
+
+
 };
 
 // Example usage:
@@ -272,6 +447,11 @@ int main() {
     //send a command to the tv
     printf("Sending message\n");
     client.send_message("Hello, World!");
+
+    for(int i = 0; i < 6 ; i++) {
+        client.volumeUp();
+        sleep_for(500ms);
+    }
 
     // Further logic to send commands or interact with the TV...
     return 0;
