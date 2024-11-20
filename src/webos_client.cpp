@@ -13,8 +13,8 @@
 #include <websocketpp/common/thread.hpp>
 #include <websocketpp/common/memory.hpp>
 
-#include <cppcodec/base32_crockford.hpp>
-#include <cppcodec/base64_rfc4648.hpp>
+// #include <cppcodec/base32_crockford.hpp>
+// #include <cppcodec/base64_rfc4648.hpp>
 
 #define WFR_SLEEP_TIME_MS 200000 //the sleep time in microseconds to wait for a response from the tv until checking again for a response. This is used with WAIT_FOR_RESPONSE. 
 #define WAIT_FOR_RESPONSE 10 //this is used with WFR_SLEEP_TIME_MS to wait for a response from the tv. So the max time you will wait is WAIT_FOR_RESPONSE * WFR_SLEEP_TIME_MS after registration
@@ -29,8 +29,8 @@ const std::string USER_HOME = "HOME";
 const std::string HANDSHAKE_FILE_NAME = "handshake.json";
 
 using json = nlohmann::json;
-using base64 = cppcodec::base64_rfc4648;
-using base32 = cppcodec::base32_crockford;
+// using base64 = cppcodec::base64_rfc4648;
+// using base32 = cppcodec::base32_crockford;
 
 using namespace std::this_thread;     // sleep_for, sleep_until
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
@@ -58,6 +58,9 @@ private:
     client::connection_ptr con;
     int commandCount = 0;
     json lastResponse;
+    std::condition_variable response_cv;
+    std::mutex response_mutex;
+    volatile bool response_ready = false;
 
     std::string getKeyFilePath() const {
         const char* home = std::getenv(USER_HOME.c_str());
@@ -127,10 +130,14 @@ private:
 
     //to use this function you must set lastResponse to empty before calling it. you need to set this before you send the request
     void wait_for_response() {
-        int wait = 0;
-        while (lastResponse.empty() || wait++ < WAIT_FOR_RESPONSE) {
-            usleep(WFR_SLEEP_TIME_MS);
-        }
+        std::unique_lock<std::mutex> lock(response_mutex);
+        response_cv.wait(lock, [this] { return response_ready; });
+        response_ready = false;
+        // int wait = 0;
+        // while (lastResponse.empty() || wait++ < WAIT_FOR_RESPONSE) {
+        //     usleep(WFR_SLEEP_TIME_MS);
+        // }
+        // std::cout << lastResponse.dump() << std::endl;
     }
 
 public:
@@ -183,7 +190,10 @@ public:
         // Send JSON over WebSocket
         std::string jsonStr = handshake.dump();
         wsClient.send(hdl, jsonStr, websocketpp::frame::opcode::text);
-        printf("sent register payload\n");
+        //wait for response from register payload
+        // sleep_for(1s);
+        // wait_for_response();
+        // printf("sent register payload and recieved response\n");
 
     }
 
@@ -215,7 +225,14 @@ public:
                 // else {
                 //     std::cout << "Received message: " << response.dump() << std::endl;
                 // }
-                lastResponse = response;
+                //lock the mutex and set the response
+                {
+                    std::lock_guard<std::mutex> lock(response_mutex);
+                    lastResponse = response;
+                    response_ready = true;
+                    std::cout << "response ready" << std::endl;
+                }
+                response_cv.notify_one();
             });
 
             wsClient.connect(con);
@@ -230,7 +247,7 @@ public:
             //     sleep_for(200ms);
             // }
 
-            printf("Sent register payload\n");
+            // printf("Sent register payload\n");
 
             
 
@@ -278,6 +295,19 @@ public:
         sendCommand("request", uri, payload);
     }
 
+    json wait_for_request(const std::string& uri, const json& payload) {
+        lastResponse = json();
+        response_ready = false;
+        std::thread t1(&WebOsClient::request, this, uri, payload);
+        std::thread t2(&WebOsClient::wait_for_response, this);
+        // wait_for_response();
+        // lastResponse = json();
+        // request(uri, payload);
+        t1.join();
+        t2.join();
+        return lastResponse;
+    }
+
     void send_message(std::string message) {
         json payload;
         payload["message"] = message;
@@ -294,58 +324,57 @@ public:
 
 
     json listApps() {
-        lastResponse = json();
-        request(EP_GET_APPS, json());
-        wait_for_response();
-        return lastResponse["payload"]["launchPoints"];
+        
+        json output = wait_for_request(EP_GET_APPS, json());
+        
+        return output["payload"]["launchPoints"];
     }
 
     json getCurrentApp() {
-        lastResponse = json();
-        request(EP_GET_CURRENT_APP_INFO, json());
-        wait_for_response();
-        return lastResponse["payload"]["appId"];
+        json output = wait_for_request(EP_GET_CURRENT_APP_INFO, json());
+        return output["payload"]["appId"];
     }
 
     void launchApp(const std::string& appId) {
         json payload;
         payload["id"] = appId;
-        request(EP_LAUNCH, payload);
+        //have to wait for response if you want your app request to work
+        wait_for_request(EP_LAUNCH_APP, payload);
     }
 
     void launchAppWithParams(const std::string& appId, const json& params) {
         json payload;
         payload["id"] = appId;
         payload["params"] = params;
-        request(EP_LAUNCH, payload);
+        wait_for_request(EP_LAUNCH, payload);
     }
 
     void launchAppWithContentID(const std::string& appId, const std::string& contentId) {
         json payload;
         payload["id"] = appId;
         payload["contentId"] = contentId;
-        request(EP_LAUNCH, payload);
+        wait_for_request(EP_LAUNCH, payload);
     }
 
     void closeApp(const std::string& appId) {
         json payload;
         payload["id"] = appId;
-        request(EP_LAUNCHER_CLOSE, payload);
+        wait_for_request(EP_LAUNCHER_CLOSE, payload);
     }
 
     //services
     json listServices() {
-        lastResponse = json();
-        request(EP_GET_SERVICES, json());
-        wait_for_response();
-        return lastResponse["payload"]["services"];
+        
+        json output = wait_for_request(EP_GET_SERVICES, json());
+       
+        return output["payload"]["services"];
     }
 
     json getSoftwareInfo() {
-        lastResponse = json();
-        request(EP_GET_SOFTWARE_INFO, json());
-        wait_for_response();
-        return lastResponse["payload"];
+        
+        json output = wait_for_request(EP_GET_SOFTWARE_INFO, json());
+        
+        return output["payload"];
     }
 
     void powerOff() {
@@ -366,10 +395,10 @@ public:
     
     //Inputs
     json listInputs() {
-        lastResponse = json();
-        request(EP_GET_INPUTS, json());
-        wait_for_response();
-        return lastResponse["payload"]["devices"];
+        
+        json output = wait_for_request(EP_GET_INPUTS, json());
+
+        return output["payload"]["devices"];
     }
 
     json getInput() {
@@ -385,10 +414,10 @@ public:
     //audio
 
     json getVolume() {
-        lastResponse = json();
-        request(EP_GET_VOLUME, json());
-        wait_for_response();
-        return lastResponse["payload"];
+       
+        json output = wait_for_request(EP_GET_VOLUME, json());
+
+        return output["payload"];
     }
 
     void setVolume(int volume) {
@@ -407,17 +436,17 @@ public:
 
     //channels
     json getChannels() {
-        lastResponse = json();
-        request(EP_GET_TV_CHANNELS, json());
-        wait_for_response();
-        return lastResponse["payload"]["channelList"];
+        
+        json output = wait_for_request(EP_GET_TV_CHANNELS, json());
+        
+        return output["payload"]["channelList"];
     }
 
     json getCurrentChannel() {
-        lastResponse = json();
-        request(EP_GET_CURRENT_CHANNEL, json());
-        wait_for_response();
-        return lastResponse["payload"];
+        
+        json output = wait_for_request(EP_GET_CURRENT_CHANNEL, json());
+        
+        return output["payload"];
     }
 
     void setChannel(const std::string& channelId) {
@@ -429,10 +458,10 @@ public:
     json getChannelInfo(const std::string& channelId) {
         json payload;
         payload["channelId"] = channelId;
-        lastResponse = json();
-        request(EP_GET_CHANNEL_INFO, payload);
-        wait_for_response();
-        return lastResponse["payload"];
+        
+        json output = wait_for_request(EP_GET_CHANNEL_INFO, payload);
+        
+        return output["payload"];
     }
 
     void channelUp() {
@@ -499,13 +528,14 @@ int main() {
     // printf("Sending message\n");
     // client.send_message("Hello, World!");
 
-    // for(int i = 0; i < 6 ; i++) {
-    //     client.volumeUp();
-    //     sleep_for(500ms);
-    // }
-    
-    std::cout << client.listApps().dump() << std::endl;
-    
+    for(int i = 0; i < 6 ; i++) {
+        client.volumeUp();
+        sleep_for(500ms);
+    }
+    // client.launchApp("youtube.leanback.v4");
+    json apps = client.listApps();
+    std::cout << apps << std::endl;
+    client.launchApp("youtube.leanback.v4");
 
     // Further logic to send commands or interact with the TV...
     return 0;
